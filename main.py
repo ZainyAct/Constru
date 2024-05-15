@@ -3,10 +3,10 @@ from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.keys import Keys
 import time
-
+chrome_options = webdriver.ChromeOptions()
 
 def itemsDict():
     spell = Speller(only_replacements=True)
@@ -37,49 +37,81 @@ def itemsDict():
 # 4. 
 #  opt. make a gps navigation to the stores, (try to make it so they can put in their account info and reserve an order with pro desk, or normally online)
 
-def main ():
-    driver = webdriver.Chrome()
-
+def main():
+    
+    chrome_options.headless = False
+    driver = webdriver.Chrome(options=chrome_options)  # Consider using a context manager or try/finally to ensure it closes
+    
     stores = {
-        1: {"HomeDep": {
+    1: {
+        "HomeDep": {
             "url": "https://www.homedepot.ca/en/home.html",
-            "id": "id5208"
-        }},
-        2: {"Rona": {
-            "url": "https://www.rona.ca/en",
-            "id": "search-input"
-        }},
-        3: {"HomeHar": {
-            "url": "https://www.homehardware.ca/en",
-            "id": "keywords"
-        }}
+            "search_selector": "input.acl-input[placeholder='What can we help you find?']",
+            "button_selector": "button.acl-action-button.icon-button",  # Assuming 'acl-action-button' and 'icon-button' are enough to uniquely identify the button
+            "price_selector": ".acl-product-card_price"
+        }
+    },
+    # 2: {
+    #     "Rona": {
+    #         "url": "https://www.rona.ca/en",
+    #         "search_selector": "#search-input",
+    #         "button_selector": "button.search-button-class",  # Placeholder, update with actual button selector from Rona
+    #         "price_selector": ".product-price"
+    #     }
+    # },
+    # 3: {
+    #     "HomeHar": {
+    #         "url": "https://www.homehardware.ca/en",
+    #         "search_selector": "#keywords",
+    #         "button_selector": "button.search-submit-button",  # Placeholder, update with actual button selector from Home Hardware
+    #         "price_selector": ".product-price"
+    #     }
     }
 
-    items = {"wood": "12"}
+    items = {"2x4 wood": 12}  # Assuming you want to look up 'wood', quantity '12'
 
-    for q, item in enumerate(items):
-        print (item, q)
-        for store in stores.values():
-            for name, details in store.items():
-                driver.get(details['url'])
+    for store_key, store_value in stores.items():
+        for name, details in store_value.items():
+            driver.get(details['url'])
+            try:
+                WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.cookie-consent-accept'))
+                ).click()
+            except TimeoutException:
+                print("No cookie pop-up or already handled.")
 
-                try:
-                    search_box = WebDriverWait(driver, 20).until(
-                        EC.presence_of_element_located((By.ID, details['id']))
-                    )
-                    search_box.send_keys(item)
+            try:
+                search_box = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, details['search_selector']))
+                )
+                search_box.clear()
+                search_box.send_keys("2x4 wood")  # Example search term
 
-                except NoSuchElementException:
-                    print(f"Element with ID {details['id']} not found on the page {details['url']}.")
-                finally:
-                    driver.quit()
+                # Locate and click the search button using the button selector from the dictionary
+                search_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, details['button_selector']))
+                )
+                search_button.click()
+                
+                WebDriverWait(driver, 10).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, details['price_selector']))
+                )
+                
+                #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                #Extract prices
 
-                # search_box.send_keys(item) 
-                # search_box.submit()
+                for item, quantity in items.items():
+                    price_elements = driver.find_elements(By.CSS_SELECTOR, details['price_selector'])
+                    for price_element in price_elements:
+                        try:
+                            price = price_element.text
+                            print(f"Price at {name}: {price}")
 
-                # time.sleep(5)
-
-    
+                        except Exception as e:
+                            print(f"Error in extracting prices at {name}: {e}")
+            except Exception as e:
+                print(f"Error in searching at {name}: {e}")
+    driver.quit()
 
 if __name__ == "__main__":
     main()
